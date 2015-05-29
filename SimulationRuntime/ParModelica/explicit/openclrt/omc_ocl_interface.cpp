@@ -397,6 +397,13 @@ modelica_integer size_of_dimension_integer_array(device_integer_array dev_arr, m
 }
 
 
+void* mmc_mk_modelica_array(device_array arr)
+{
+  // assert(0 && "It is currently not allowed to call functions with parglobal/parlocal variables that are not protected (i.e. input/output) from a script. Please report the error to the OpenModelica developers");
+  return NULL;
+}
+
+
 /*
 void print_array_info(device_real_array* arr){
 

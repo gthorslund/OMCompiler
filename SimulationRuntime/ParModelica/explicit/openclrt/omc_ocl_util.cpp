@@ -299,9 +299,9 @@ void ocl_build_p_from_src(){
     strcat(options, OMHOME);
     strcat(options, OMEXT);
 
-#if BE_OCL_VERBOSE
+// #if BE_OCL_VERBOSE
     printf("\t :Using flags %s\n",options);
-#endif
+// #endif
 
     // Build the OpenCL program.
     cl_int err = 0;

@@ -799,7 +799,7 @@ algorithm
         outVars = List.map(DAEUtil.getOutputVars(daeElts), daeInOutSimVar);
         funArgs = List.map1(args, typesSimFunctionArg, NONE());
         (recordDecls, rt_1) = elaborateRecordDeclarations(daeElts, recordDecls, rt);
-        vars = List.filter(daeElts, isVarQ);
+        vars = List.filter(daeElts, isVarNotInputNotOutput);
         varDecls = List.map(vars, daeInOutSimVar);
         algs = List.filterOnTrue(daeElts, DAEUtil.isAlgorithm);
         bodyStmts = List.map(algs, elaborateStatement);
@@ -839,7 +839,7 @@ algorithm
         outVars = List.map(DAEUtil.getOutputVars(daeElts), daeInOutSimVar);
         funArgs = List.map1(args, typesSimFunctionArg, NONE());
         (recordDecls, rt_1) = elaborateRecordDeclarations(daeElts, recordDecls, rt);
-        vars = List.filter(daeElts, isVarQ);
+        vars = List.filter(daeElts, isVarNotInputNotOutput);
         varDecls = List.map(vars, daeInOutSimVar);
         algs = List.filterOnTrue(daeElts, DAEUtil.isAlgorithm);
         bodyStmts = List.map(algs, elaborateStatement);

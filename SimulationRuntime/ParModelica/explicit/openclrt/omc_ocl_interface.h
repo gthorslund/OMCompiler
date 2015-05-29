@@ -167,6 +167,11 @@ modelica_integer size_of_dimension_real_array(device_real_array dev_arr, modelic
 //array dimension size functions. returns the size of a given dimension for device integer array
 modelica_integer size_of_dimension_integer_array(device_integer_array dev_arr, modelica_integer dim);
 
+
+
+modelica_metatype mmc_mk_modelica_array(device_real_array arr);
+
+
 //Free a device array memory.
 void free_device_array(device_array *dest);
 

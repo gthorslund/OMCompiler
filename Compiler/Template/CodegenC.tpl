@@ -59,6 +59,7 @@ import CodegenUtil.*;
     let target  = simulationCodeTarget()
     let &dummy = buffer ""
     let()= System.tmpTickResetIndex(0,2) /* auxFunction index */
+    let()= System.tmpTickResetIndex(0,20) /*parfor index*/
     let()= textFile(simulationMakefile(target, simCode), '<%fileNamePrefix%>.makefile') // write the makefile first!
 
     let()= textFile(simulationLiteralsFile(fileNamePrefix, literals), '<%fileNamePrefix%>_literals.h')
@@ -105,6 +106,7 @@ end translateInitFile;
   match functionCode
   case fc as FUNCTIONCODE(__) then
     let()= System.tmpTickResetIndex(0,2) /* auxFunction index */
+    let()= System.tmpTickResetIndex(0,20) /*parfor index*/
     let &staticPrototypes = buffer ""
     let filePrefix = name
     let _= (if mainFunction then textFile(functionsMakefile(functionCode), '<%filePrefix%>.makefile'))
@@ -4149,6 +4151,17 @@ end simulationLiteralsFile;
   #include "<%filePrefix%>_literals.h"
   #include "<%filePrefix%>_includes.h"
 
+  <%if acceptParModelicaGrammar() then
+  <<
+  /* the OpenCL Kernels file name needed in libOMOCLRuntime.a */
+  const char* omc_ocl_kernels_source = "<%filePrefix%>_kernels.cl";
+  /* the OpenCL program. Made global to avoid repeated builds */
+  extern cl_program omc_ocl_program;
+  /* The default OpenCL device. If not set (=0) show the selection option.*/
+  unsigned int default_ocl_device = <%getDefaultOpenCLDevice()%>;
+  >>
+  %>
+
   <%if staticPrototypes then
   <<
   /* default, do not make protected functions static */
@@ -4172,11 +4185,11 @@ template simulationParModelicaKernelsFile(String filePrefix, list<Function> func
  "Generates the content of the C file for functions in the simulation case."
 ::=
 
-  /* Reset the parfor loop id counter to 0*/
+  /* Reset the parfor loop id counter to 1*/
   let()= System.tmpTickResetIndex(0,20) /* parfor index */
 
   <<
-  #include <ParModelica/explicit/openclrt/OCLRuntimeUtil.cl>
+  #include "OCLRuntimeUtil.cl"
 
   // ParModelica Parallel Function headers.
   <%functionHeadersParModelica(filePrefix, functions)%>
@@ -4194,11 +4207,11 @@ template functionsParModelicaKernelsFile(String filePrefix, Option<Function> mai
  "Generates the content of the C file for functions in the simulation case."
 ::=
 
-  /* Reset the parfor loop id counter to 0*/
+  /* Reset the parfor loop id counter to 1*/
   let()= System.tmpTickResetIndex(0,20) /* parfor index */
 
   <<
-  #include <ParModelica/explicit/openclrt/OCLRuntimeUtil.cl>
+  #include "OCLRuntimeUtil.cl"
 
   // ParModelica Parallel Function headers.
   <%functionHeadersParModelica(filePrefix, functions)%>
@@ -4531,12 +4544,6 @@ template commonHeader(String filePrefix)
   <%if acceptParModelicaGrammar() then
   <<
   #include <ParModelica/explicit/openclrt/omc_ocl_interface.h>
-  /* the OpenCL Kernels file name needed in libOMOCLRuntime.a */
-  const char* omc_ocl_kernels_source = "<%filePrefix%>_kernels.cl";
-  /* the OpenCL program. Made global to avoid repeated builds */
-  extern cl_program omc_ocl_program;
-  /* The default OpenCL device. If not set (=0) show the selection option.*/
-  unsigned int default_ocl_device = <%getDefaultOpenCLDevice()%>;
   >>
   %>
 
@@ -4561,6 +4568,17 @@ template functionsFile(String filePrefix,
   #include "util/modelica.h"
 
   #include "<%filePrefix%>_includes.h"
+
+  <%if acceptParModelicaGrammar() then
+  <<
+  /* the OpenCL Kernels file name needed in libOMOCLRuntime.a */
+  const char* omc_ocl_kernels_source = "<%filePrefix%>_kernels.cl";
+  /* the OpenCL program. Made global to avoid repeated builds */
+  extern cl_program omc_ocl_program;
+  /* The default OpenCL device. If not set (=0) show the selection option.*/
+  unsigned int default_ocl_device = <%getDefaultOpenCLDevice()%>;
+  >>
+  %>
 
   <%if staticPrototypes then
   <<
@@ -4879,35 +4897,28 @@ template parallelFunctionHeader(Function fn, Boolean inFunc)
   match fn
     case PARALLEL_FUNCTION(__) then
       <<
-      <%functionHeaderParallelImpl(underscorePath(name), functionArguments, outVars, inFunc, false)%>
+      <%functionHeaderParallelImpl(underscorePath(name), functionArguments, outVars, inFunc, false)%>;
       >>
 end parallelFunctionHeader;
 
 template functionHeaderParallelImpl(String fname, list<Variable> fargs, list<Variable> outVars, Boolean inFunc, Boolean boxed)
  "Generates parmodelica paralell function header part in kernels files."
 ::=
-    let fargsStr =  (fargs |> var => funArgDefinition(var) ;separator=", ")
-    if outVars then
-  <<
-    <%outVars |> _ hasindex i1 fromindex 1 => '#define <%fname%>_rettype_<%i1%> c<%i1%>' ;separator="\n"%>
-    typedef struct <%fname%>_rettype_s
-    {
-      <%outVars |> var hasindex i1 fromindex 1 =>
-        match var
-        case VARIABLE(__) then
-          let dimStr = match ty case T_ARRAY(__)
-                       then '[<%dims |> dim => dimension(dim) ;separator=", "%>]'
-          let typeStr = if boxed then varTypeBoxed(var) else varType(var)
-          '<%typeStr%> c<%i1%>; /* <%crefStr(name)%><%dimStr%> */'
-        case FUNCTION_PTR(__) then
-          'modelica_fnptr c<%i1%>; /* <%name%> */'
-      ;separator="\n";empty
-      %>
-    } <%fname%>_rettype;
+  let fargsStr = (fargs |> var => funArgDefinitionKernelFunctionInterface(var) ;separator=", ")
+  // let &fargsStr += if outVars then ", " + (outVars |> var => tupleOutfunArgDefinitionKernelFunctionInterface(var) ;separator=", ")
+  // 'void omc_<%fname%>(<%fargsStr%>)'
 
-  <%fname%>_rettype omc_<%fname%>(<%fargsStr%>);
+  match outVars
+    case {} then
+      'void omc_<%fname%>(<%fargsStr%>)'
 
-    >>
+    case fvar::rest then
+      let rettype = functionArgTypeKernelInterface(fvar)
+      let &fargsStr += if rest then ", " + (rest |> var => tupleOutfunArgDefinitionKernelFunctionInterface(var) ;separator=", ")
+      '<%rettype%> omc_<%fname%>(<%fargsStr%>)'
+
+    else
+      error(sourceInfo(), 'functionHeaderParallelImpl failed')
 end functionHeaderParallelImpl;
 
 template recordDeclaration(RecordDeclaration recDecl)
@@ -5121,8 +5132,8 @@ end tupleOutfunArgDefinitionKernelFunctionInterface;
 template functionArgTypeKernelInterface(Variable var)
 ::=
   match var
-    case VARIABLE(ty=T_ARRAY(__), parallelism = PARGLOBAL(__)) then 'device_<%varType(var)%>'
-    case VARIABLE(ty=T_ARRAY(__), parallelism = PARLOCAL(__)) then 'device_local_<%varType(var)%>'
+    case VARIABLE(ty=T_ARRAY(__), parallelism = PARGLOBAL(__)) then '<%varType(var)%>'
+    case VARIABLE(ty=T_ARRAY(__), parallelism = PARLOCAL(__)) then '<%varType(var)%>'
     case VARIABLE(__) then '<%varType(var)%>'
     else 'Invalid function argument to Kernel function Interface.'
 end functionArgTypeKernelInterface;
@@ -5474,7 +5485,6 @@ template extractParforBodies(Function fn, Boolean inFunc)
 ::=
 match fn
 case FUNCTION(__) then
-  let()= System.tmpTickReset(1)
   let()= System.tmpTickResetIndex(0,1) /* Boxed array indices */
 
   let &varDecls = buffer ""
@@ -5499,9 +5509,14 @@ case FUNCTION(__) then
   let &varDecls = buffer ""
   let &varInits = buffer ""
   let &varFrees = buffer ""
+  let &outVarFrees = buffer "" /*we don't free them. this is just ignored*/
   let &auxFunction = buffer ""
-  let _ = (variableDeclarations |> var hasindex i1 fromindex 1 =>
+
+  let _ = (variableDeclarations |> var =>
       varInit(var, "", &varDecls, &varInits, &varFrees, &auxFunction) ; empty /* increase the counter! */
+    )
+  let _ = (outVars |> var =>
+      varInit(var, "", &varDecls, &varInits, &outVarFrees, &auxFunction) ; empty /* increase the counter! */
     )
   let bodyPart = (body |> stmt  => funStatement(stmt, &varDecls, &auxFunction) ;separator="\n")
   let outVarAssign = (List.restOrEmpty(outVars) |> var => varOutput(var))
@@ -5537,14 +5552,25 @@ end functionBodyRegularFunction;
 
 template generateInFunc(Text fname, list<Variable> functionArguments, list<Variable> outVars)
 ::=
+  let &varDecls = buffer ""
+  let &varInits = buffer ""
+  let &varFrees = buffer ""
+  let &auxFunction = buffer ""
+  let _ = outVars |> var => varInit(var, "", &varDecls, &varInits, &varFrees, &auxFunction) ; empty
+  let outvarwrites = match outVars
+                        case {} then "write_noretcall(outVar);"
+                        else (outVars |> var => writeOutVar(var) ;separator="\n")
   <<
   DLLExport
   int in_<%fname%>(threadData_t *threadData, type_description * inArgs, type_description * outVar)
   {
     //if (!mmc_GC_state) mmc_GC_init();
     <%functionArguments |> var => '<%funArgDefinition(var)%>;' ;separator="\n"%>
-    <%outVars |> var => '<%funArgDefinition(var)%>;' ;separator="\n"%>
+    <%varDecls%>
     <%functionArguments |> arg => readInVar(arg) ;separator="\n"%>
+
+    <%varInits%>
+
     MMC_TRY_TOP_INTERNAL()
     <%match outVars
         case v::_ then '<%funArgName(v)%> = '
@@ -5601,10 +5627,15 @@ case KERNEL_FUNCTION(__) then
   let &varDecls = buffer ""
   let &varInits = buffer ""
   let &varFrees = buffer ""
+  let &outVarFrees = buffer "" /*we don't free them. this is just ignored*/
   let &auxFunction = buffer ""
   let _ = (variableDeclarations |> var =>
       varInit(var, "", &varDecls, &varInits, &varFrees, &auxFunction) ; empty /* increase the counter! */
     )
+
+  // let _ = (outVars |> var =>
+      // varInit(var, "", &varDecls, &varInits, &outVarFrees, &auxFunction) ; empty /* increase the counter! */
+    // )
 
   // This odd arrangment and call is to get the commas in the right places
   // between the argumetns.
@@ -5658,48 +5689,46 @@ template functionBodyParallelFunction(Function fn, Boolean inFunc)
 ::=
 match fn
 case PARALLEL_FUNCTION(__) then
+  let &auxFunction = buffer ""
+  let()= codegenResetTryThrowIndex()
   let()= System.tmpTickReset(1)
+  let()= System.tmpTickResetIndex(0,1) /* Boxed array indices */
   let fname = underscorePath(name)
-  let retType = if outVars then '<%fname%>_rettype' else "void"
   let &varDecls = buffer ""
   let &varInits = buffer ""
   let &varFrees = buffer ""
+  let &outVarFrees = buffer "" /*we don't free them. this is just ignored*/
   let &auxFunction = buffer ""
-  let retVar = if outVars then tempDecl(retType, &varDecls)
-  let _ = (variableDeclarations |> var hasindex i1 fromindex 1 =>
-      varInitParallel(var, "", i1, &varDecls, &varInits, &varFrees, &auxFunction)
-      ;empty
+
+  let _ = (variableDeclarations |> var =>
+      varInit(var, "", &varDecls, &varInits, &varFrees, &auxFunction) ; empty
+    )
+  let _ = (outVars |> var =>
+      varInit(var, "", &varDecls, &varInits, &outVarFrees, &auxFunction) ; empty
     )
   let bodyPart = (body |> stmt  => parModelicafunStatement(stmt, &varDecls, &auxFunction) ;separator="\n")
-  let &outVarInits = buffer ""
-  let &outVarCopy = buffer ""
-  let &outVarAssign = buffer ""
-  let _1 = (outVars |> var hasindex i1 fromindex 1 =>
-      varOutputParallel(var, retVar, i1, &varDecls, &outVarInits, &outVarCopy, &outVarAssign, &auxFunction)
-      ;separator="\n"; empty
-    )
+  let outVarAssign = (List.restOrEmpty(outVars) |> var => varOutput(var))
 
+  /* Needs to be done last as it messes with the tmp ticks :) */
+  let &varDecls += addRootsTempArray()
 
   <<
   <%auxFunction%>
-  <%retType%> omc_<%fname%>(<%functionArguments |> var => funArgDefinition(var) ;separator=", "%>)
+  <%functionHeaderParallelImpl(fname, functionArguments, outVars, false, false)%>
   {
     <%varDecls%>
-    <%outVarInits%>
 
     <%varInits%>
 
     <%bodyPart%>
 
-    <%outVarCopy%>
     <%outVarAssign%>
 
-    /*mahge: Free unwanted meomory allocated*/
-    <%varFrees%>
-
-    return<%if outVars then ' <%retVar%>' %>;
+    <%match outVars
+       case {} then 'return;'
+       case v::_ then 'return <%funArgName(v)%>;'
+    %>
   }
-
   >>
 end functionBodyParallelFunction;
 
@@ -5756,7 +5785,9 @@ case KERNEL_FUNCTION(__) then
 
     <%outVarAssign%>
 
+    /*
     <%varFrees%>
+    */
 
     <%match outVars
        case {} then 'return;'
@@ -6032,6 +6063,12 @@ end boxRecordConstructor;
 template funArgUnbox(Variable var, Text &varDecls, Text &varBox, Text &auxFunction)
 ::=
 match var
+case VARIABLE(ty=T_ARRAY(__), parallelism = PARGLOBAL(__)) then
+  let varName = contextCref(name,contextFunction,&auxFunction)
+  '*((<%varType(var)%>*)<%varName%>)'
+case VARIABLE(ty=T_ARRAY(__), parallelism = PARLOCAL(__)) then
+  let varName = contextCref(name,contextFunction,&auxFunction)
+  '*((<%varType(var)%>*)<%varName%>)'
 case VARIABLE(__) then
   let varName = contextCref(name,contextFunction,&auxFunction)
   unboxVariable(varName, ty, &varBox, &varDecls)
@@ -8834,10 +8871,11 @@ template daeExpCall(Exp call, Context context, Text &preExp, Text &varDecls, Tex
     let tvar = tempDecl("modelica_integer", &varDecls)
     let &preExp += '<%tvar%> = <%var2%>;<%\n%>'
     let &preExp +=
-      if acceptMetaModelicaGrammar()
-        then 'if (<%tvar%> == 0) {<%generateThrow()%>;}<%\n%>'
-        else 'if (<%tvar%> == 0) {throwStreamPrint(threadData, "Division by zero %s", "<%Util.escapeModelicaStringToCString(printExpStr(call))%>");}<%\n%>'
-    'ldiv(<%var1%>,<%tvar%>).quot'
+      if acceptMetaModelicaGrammar() then 'if (<%tvar%> == 0) {<%generateThrow()%>;}<%\n%>'
+      else 'if (<%tvar%> == 0) {throwStreamPrint(threadData, "Division by zero %s", "<%Util.escapeModelicaStringToCString(printExpStr(call))%>");}<%\n%>'
+    /*ldiv not available in opencl c*/
+    if acceptParModelicaGrammar() then '(modelica_integer)(<%var1%>/<%tvar%>)'
+    else 'ldiv(<%var1%>,<%tvar%>).quot'
 
   case CALL(path=IDENT(name="div"), expLst={e1,e2}) then
     let var1 = daeExp(e1, context, &preExp, &varDecls, &auxFunction)
@@ -10129,6 +10167,10 @@ case var as VARIABLE(parallelism = NON_PARALLEL()) then
     expTypeArray(var.ty)
   else
     expTypeArrayIf(var.ty)
+case var as VARIABLE(ty=T_ARRAY(__), parallelism = PARGLOBAL(__)) then
+  'device_<%expTypeArray(var.ty)%>'
+case var as VARIABLE(ty=T_ARRAY(__), parallelism = PARLOCAL(__)) then
+  'device_local_<%expTypeArray(var.ty)%>'
 case var as VARIABLE(parallelism = PARGLOBAL()) then
   if instDims then
     'device_<%expTypeArray(var.ty)%>'
