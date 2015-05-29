@@ -246,15 +246,34 @@ void copy_real_array_data(real_array *source, real_array *dest)
     }
 }
 
+#define array_element_offset_c99_1(L, d, i) (i - 1)
+#define array_element_offset_c99_2(L, d, i, j)\
+  (array_element_offset_c99_1(L, d, i)*((L)->dim_size[1]) + (j - 1))
+#define array_element_offset_c99_3(L, d, i, j, k)\
+  (array_element_offset_c99_2(L, d, i, j)*((L)->dim_size[2]) + (k - 1))
+#define array_element_offset_c99_4(L, d, i, j, k, l)\
+  (array_element_offset_c99_3(L, d, i, j, k)*((L)->dim_size[3]) + (l - 1))
 
+#define integer_array_element_addr_c99_1(L, d, i)\
+  (((L)->data) + array_element_offset_c99_1(L, d, i))
+#define integer_array_element_addr_c99_2(L, d, i, j)\
+  (((L)->data) + array_element_offset_c99_2(L, d, i, j))
+#define integer_array_element_addr_c99_3(L, d, i, k)\
+  (((L)->data) + array_element_offset_c99_3(L, d, i, k))
+#define integer_array_element_addr_c99_4(L, d, i, k, l)\
+  (((L)->data) + array_element_offset_c99_4(L, d, i, k, l))
 
-#define integer_array_element_addr_c99_1(L, d, i) (((L)->data) + i - 1)
-#define integer_array_element_addr_c99_2(L, d, i, j) ((((L)->data)) + (i - 1)*((L)->dim_size[1]) + (j - 1))
+#define real_array_element_addr_c99_1(L, d, i)\
+  (((L)->data) + array_element_offset_c99_1(L, d, i))
+#define real_array_element_addr_c99_2(L, d, i, j)\
+  (((L)->data) + array_element_offset_c99_2(L, d, i, j))
+#define real_array_element_addr_c99_3(L, d, i, j, k)\
+  (((L)->data) + array_element_offset_c99_3(L, d, i, j, k))
+#define real_array_element_addr_c99_4(L, d, i, j, k, l)\
+  (((L)->data) + array_element_offset_c99_4(L, d, i, j, k, l))
 
-#define real_array_element_addr_c99_1(L, d, i) (((L)->data) + i - 1)
-#define real_array_element_addr_c99_2(L, d, i, j) ((((L)->data)) + (i - 1)*((L)->dim_size[1]) + (j - 1))
-
-
+#define size_of_dimension_base_array(A, i)\
+  (A.dim_size[i-1])
 
 // typedef modelica_real cos_rettype;
 // typedef modelica_real cosh_rettype;
