@@ -421,6 +421,8 @@ void ocl_set_local_kernel_arg(cl_kernel kernel, int arg_nr, size_t in_size){
 
 
 void ocl_execute_kernel(cl_kernel kernel){
+    static long kernelCalls = 0;
+    static double totalKernelTime = 0;
 
     cl_int err = 0;
 
@@ -467,7 +469,11 @@ void ocl_execute_kernel(cl_kernel kernel){
     gettimeofday(&t2, NULL);
     elapsedTime = (t2.tv_sec - t1.tv_sec) * 1000.0;      // sec to ms
     elapsedTime += (t2.tv_usec - t1.tv_usec) / 1000.0;   // us to ms
+    kernelCalls++;
+    totalKernelTime += elapsedTime/1000;
     printf ("\tKernel Execution      :        %lf ms\n", elapsedTime);
+    printf ("\tKernel calls: %ld, time %lf s, avg %lf ms\n",
+	    kernelCalls, totalKernelTime, totalKernelTime/kernelCalls*1000);
 
     if(err) exit(1);
 
